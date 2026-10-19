@@ -80,3 +80,9 @@ Stretch: on-chain chronicle hash anchoring (Merkle root per day on Monad), ERC-6
 
 ## 12. UI polish (implemented)
 motion (framer-motion) + canvas-confetti (lazy chunk). Page transitions, 3D tilt+glare cards, duel arena (clash loop, spinning dice, spring result reveal, confetti on win / screen shake on loss, SFX), energy pip + streak flame animations, count-up reputation with up/down flash, staggered timeline, live-feed "fresh" highlight, skeleton loaders, toasts, onboarding steps on landing, chogathon-style buttons (JetBrains Mono uppercase, offset shadow, shine sweep) and SFX toggle (same WebAudio approach as chogathon.chog.xyz). `MotionConfig reducedMotion="user"` + CSS `prefers-reduced-motion` override. Lazy routes + vendor chunks (react / motion / web3); no chunk > 350 KB.
+
+## 13. Vercel deployment (implemented)
+- Frontend: static Vite build (`dist/`), SPA fallback rewrite. API: `api/index.ts` (Node.js runtime, Web `Request`→Hono `app.fetch`), all `/api/*` rewritten to it. `server/app.ts` is shared by Vercel and the local Node server (`server/index.ts`).
+- DB: `@libsql/client` — Turso in prod (`TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`), `file:data/chronicle.db` locally. On Vercel without Turso config the function fails fast. Schema migration + seeding run lazily on first request (seeding is idempotent inside a write transaction). All state incl. nonces, used gift tx hashes and demo energy lives in the DB; nonce consumption is an atomic `update … where used=0`.
+- Demo Chog metadata moved to `shared/demoChogs.ts` (bundled into the function; no JSON file tracing needed).
+- Alternatives: Neon Postgres (swap `server/db.ts`), or a long-running host (Railway/Fly/Render) with `npm start` + volume.

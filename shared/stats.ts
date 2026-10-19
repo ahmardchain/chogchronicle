@@ -1,5 +1,5 @@
 export type Attr = { trait_type: string; value: string };
-export type Chog = { tokenId: number; name: string; image: string; attributes: Attr[] };
+export type Chog = { tokenId: number; name: string; image: string; ipfsImage?: string; attributes: Attr[] };
 function h(s: string) { let x = 2166136261; for (const ch of s) x = Math.imul(x ^ ch.charCodeAt(0), 16777619); return (x >>> 0); }
 export function stats(c: Chog) {
   const a = Object.fromEntries(c.attributes.map(t => [t.trait_type, String(t.value)]));

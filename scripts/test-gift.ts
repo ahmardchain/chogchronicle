@@ -1,7 +1,9 @@
 // Verifies on-chain gift checks (uses a real historical $CHOG Transfer on Monad) + API guards + per-session demo energy.
-process.env.DB_PATH = '/tmp/cc-test.db';
+
 import { privateKeyToAccount, generatePrivateKey } from 'viem/accounts';
-import { verifyGiftTx } from '../server/engine';
+import { verifyGiftTx } from '../server/engine.js';
+import { migrate } from '../server/db.js';
+await migrate();
 import { actionMessage } from '../shared/stats';
 const TX = '0x98365e0863e706275851efad059a1a5995de651620caffa21410611d419b4c22' as const;
 const FROM = '0x533a0dF3Dc9f6527b79a96EE1125Adc038380fD0', TO = '0x44ed9B74F4fE2b0975c2B5121B0E906dA6ce4A48';

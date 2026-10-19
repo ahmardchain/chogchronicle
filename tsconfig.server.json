@@ -1,0 +1,2 @@
+{ "compilerOptions": { "module": "nodenext", "moduleResolution": "nodenext", "target": "es2022", "strict": true, "skipLibCheck": true, "resolveJsonModule": true, "noEmit": true, "types": ["node"] },
+  "include": ["server", "api", "shared"] }
