@@ -1,0 +1,61 @@
+# ChogChronicle — Design Doc (Chogathon 2026)
+
+> "A persistent social world where every Chog NFT builds its own reputation, relationships, rivalries, achievements, and history through interactions with other Chogs." — Ahmard's pitch
+
+## 1. Concept
+Every Chog Genesis NFT is a *character with a past*. ChogChronicle is a living social ledger: Chogs duel, befriend, prank and gift each other once a day. Every interaction is written into an append-only **Chronicle** keyed by `tokenId`. Over time each Chog accumulates a **Reputation**, a **web of relationships** (friends, rivals, nemesis), **achievements** and a **timeline** that reads like a story. The world-wide feed is the "newspaper" of the Chog World Order.
+
+## 2. Why the NFT is essential (qualifier check)
+- **Identity = tokenId.** There is no account, no username. The actor in every action is a Chog tokenId; the history lives on `(contract, tokenId)`.
+- **Stats come from on-chain traits.** Chaos / Charm / Grit are derived deterministically from the token's metadata attributes (Body, Eyes, Mouth, Tier, …). Different Chogs play differently.
+- **Ownership gates action.** You can only act *as* a Chog that `ownerOf(tokenId)` returns for your wallet (demo mode bypasses this with sample Chogs).
+- **Reputation travels with the token.** Sell/transfer the Chog and its story, friends, rivals and titles go with it — the history becomes part of the NFT's value. Remove the NFT and there is literally nothing to play as.
+
+## 3. Core loop (daily)
+1. Pick one of your Chogs → it has **3 Energy** per day (UTC reset).
+2. Choose another Chog and an interaction:
+   | Action | Effect |
+   |---|---|
+   | ⚔️ **Challenge** | Stat duel (Grit+Chaos vs. opponent + seeded roll). Winner +Rep, loser −Rep small. Repeated close duels turn two Chogs into **Rivals**; 5+ duels → **Nemesis**. |
+   | 🤝 **Befriend** | +Bond (Charm-weighted). Bond ≥ 30 → **Friends**, ≥ 70 → **Sworn Allies**. |
+   | 😈 **Prank** | Chaos check. Success = +Chaos rep, −Bond. Fail = embarrassing chronicle entry. |
+   | 🎁 **Gift $CHOG** | Spend $CHOG (simulated in MVP) for big +Bond and +Rep for both. |
+3. Every result writes a narrative line to both Chogs' timelines and the global feed.
+4. Achievements unlock (First Blood, Social Butterfly, Nemesis Forged, Chaos Agent, Generous Soul, 3-Day Streak…).
+
+## 4. Retention hooks
+- Daily energy + **streaks** (per Chog) with a streak multiplier on Rep.
+- **Chronicle feed** — you come back to see who challenged *your* Chog (inbound events).
+- **Rivalries** create unfinished business (revenge duels).
+- **Seasons** (2-week, matches hackathon): season leaderboard of Rep, titles frozen into the Chog's permanent history ("Season 1 Champion").
+- World simulation: other Chogs act even when you don't, so the world feels alive.
+
+## 5. $CHOG integration (bonus)
+$CHOG token on Monad: `0x350035555E10d9AfAF1566AaebfCeD5BA6C27777` (from chog.xyz).
+- **Gift** action is a real `transfer` of $CHOG to the *owner of the target tokenId* (MVP: simulated balance; v2: on-chain transfer with tx hash recorded in the chronicle).
+- **Revive energy**: burn/spend small $CHOG for an extra action.
+- **Season prize pool** in $CHOG for top Rep Chogs. Using $CHOG to *strengthen bonds between NFTs* is meaningful, not decorative.
+
+## 6. MVP scope (2 weeks)
+Week 1: wallet + Monad chain, owned Chog discovery (ownerOf check), trait→stats, 4 interactions, local persistence, profile, feed. ✅ (prototype built)
+Week 2: shared backend (Supabase/SQLite API so all players see one world), signed actions (wallet signs `{tokenId, action, target, nonce}`), real $CHOG gift transfer, seasons leaderboard, share-card OG images, demo video.
+Stretch: on-chain chronicle hash anchoring (Merkle root per day on Monad), ERC-6551-style "memory" view.
+
+## 7. Tech stack
+- Vite + React 19 + TypeScript, react-router
+- wagmi v3 + viem, Monad mainnet (chainId 143, RPC `https://rpc.monad.xyz`)
+- Persistence: localStorage (MVP) → Supabase/Postgres (same as chogathon site uses)
+- Styling: plain CSS with the chogathon design tokens (no Tailwind needed)
+
+## 8. Screens
+1. **Landing** — hero, pitch, connect wallet / enter demo.
+2. **My Chogs** — owned (or demo) Chogs with Rep, energy, streak.
+3. **Chog Profile** — art, traits, stats, Rep, title, relationships (friends/rivals), achievements, timeline.
+4. **Interact** — choose target Chog + action, animated result.
+5. **Chronicle** — global feed + leaderboard.
+
+## 9. Sources / assets
+- Chog Genesis ERC-721 (Monad): `0xc96d31F8626c6D03Fae5dCD3d61e3FB9F4a73763`, 1,969 supply (MonadScan, OpenSea "chog-genesis").
+- Metadata: `tokenURI` → `ipfs://bafybeid4ybujnscdipkno7ps5utqelp5ry5ryreqhay3zhgk3a6x4jruqu/<n>.json`, images `ipfs://bafybeihau2egcccbdxymeckmmbrqytbfor5gkt3en6d5fsbueymdbq7g6e/<n>.webp`. Note tokenId ≠ name number (token 1 = "CHOG #1462"). Fetched via gateway.pinata.cloud (ipfs.io/dweb.link no longer serve directly). Cached 12 demo tokens in `public/chogs/` via `scripts/fetch-chogs.mjs`.
+- $CHOG token: chog.xyz.
+- Visual style: chogathon.chog.xyz CSS variables (bg `#0e0b1a`, card `#161228`, purple `#836ef9`/`#a99bfc`, gold `#f59e0b`, ok `#5ce68a`), fonts Koulen (display), Inter (body), JetBrains Mono (labels). Images `banner.jpg, og.jpg, chog1/5/6.jpg, chognice.jpg, chogwow.jpg, chogbadge.png` copied to `public/brand/` from chogathon.chog.xyz — brand assets of the hackathon host, used for a hackathon entry; confirm usage terms with organizers before public launch.

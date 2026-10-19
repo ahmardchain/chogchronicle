@@ -1,0 +1,17 @@
+import { createPublicClient, http, parseAbi } from 'viem';
+import fs from 'fs';
+const C='0xc96d31F8626c6D03Fae5dCD3d61e3FB9F4a73763';
+const c=createPublicClient({transport:http('https://rpc.monad.xyz')});
+const abi=parseAbi(['function tokenURI(uint256) view returns (string)','function ownerOf(uint256) view returns (address)']);
+const G='https://gateway.pinata.cloud/ipfs/';
+const ids=[1,7,42,69,100,143,256,420,777,1000,1337,1659];
+const out=[];
+for(const id of ids){
+  const uri=await c.readContract({address:C,abi,functionName:'tokenURI',args:[BigInt(id)]});
+  const m=await (await fetch(uri.replace('ipfs://',G))).json();
+  const img=await (await fetch(m.image.replace('ipfs://',G))).arrayBuffer();
+  fs.writeFileSync(`public/chogs/${id}.webp`,Buffer.from(img));
+  out.push({tokenId:id,name:m.name,image:`/chogs/${id}.webp`,ipfsImage:m.image,attributes:m.attributes});
+  console.log(id,m.name);
+}
+fs.writeFileSync('src/demoChogs.json',JSON.stringify(out,null,1));
