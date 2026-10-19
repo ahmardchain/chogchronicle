@@ -73,3 +73,7 @@ Stretch: on-chain chronicle hash anchoring (Merkle root per day on Monad), ERC-6
 - **Railway / Fly.io / Render** (recommended): single Node service, mount a persistent volume at `/data`, set `DB_PATH=/data/chronicle.db`, `PORT`, `ADMIN_TOKEN`, `DEMO_MODE`, optionally `MONAD_RPC`. Fly: `fly launch` + `fly volumes create data`.
 - **Supabase**: swap `server/db.ts` for Postgres (same schema; `act` becomes a SQL transaction / RPC function). Frontend can stay on Vercel/Netlify with `/api` pointed at the backend.
 - Note: SQLite = one instance only (no horizontal scaling) — fine for a hackathon.
+
+## 11. Real $CHOG gifts + demo energy (implemented)
+- Wallet mode Gift: client `ownerOf(target)` → ERC-20 `transfer(owner, 25 * 10^decimals)` ($CHOG, 18 decimals) via wagmi → waits for receipt → signs action message that includes `Tx: <hash>` → server re-reads `ownerOf(target)`, fetches the receipt on Monad, requires status success + a $CHOG `Transfer(signer → targetOwner, ≥25)` log, rejects reused hashes (`used_tx` table), then records the gift. Wallet balance shown is the real on-chain `balanceOf`.
+- Demo mode: per-visitor session id (localStorage UUID) → own daily energy (`demo_energy` table) and own mock $CHOG balance (`demo:<session>`). Rep/relationships/feed remain one shared world. Chosen over unlimited energy to keep the core loop intact while never blocking judges (a fresh tab/incognito = fresh energy).
