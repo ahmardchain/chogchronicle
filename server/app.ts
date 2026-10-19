@@ -1,18 +1,30 @@
 import { Hono } from 'hono';
 import { randomBytes } from 'crypto';
 import { isAddress, verifyMessage } from 'viem';
-import { client as dbc, migrate, q } from './db.js';
+import { client as dbc, migrate, q, ConfigError } from './db.js';
 import { act, verifyGiftTx, demoEnergyLeft, balanceOf, chogRow, client, CHOG_NFT, energyLeft, getMeta, getRel, loadMeta, nftAbi, relsOf, seedIfEmpty, warmMeta } from './engine.js';
 import { ACTIONS, DEMO_OWNED, actionMessage, relLabel, title, type Action } from '../shared/stats.js';
 
 const DEMO_MODE = process.env.DEMO_MODE !== '0';
 const app = new Hono();
+const ENV_NAMES = ['TURSO_DATABASE_URL', 'TURSO_AUTH_TOKEN', 'ADMIN_TOKEN', 'DEMO_MODE', 'MONAD_RPC', 'DB_PATH'];
+/** Health: reports which env vars are present (names only, never values) and whether the DB answers. */
+app.get('/api/health', async c => {
+  const env = Object.fromEntries(ENV_NAMES.map(n => [n, !!process.env[n]?.trim()]));
+  let db: string = 'ok';
+  try { await migrate(); await q.get(dbc, 'select 1 x'); } catch (e) { db = (e instanceof ConfigError ? '' : 'error: ') + (e as Error).message; }
+  const ok = db === 'ok';
+  return c.json({ ok, db, demo: DEMO_MODE, runtime: { node: process.version, vercel: !!process.env.VERCEL, region: process.env.VERCEL_REGION ?? null }, env }, ok ? 200 : 500);
+});
+app.onError((e, c) => {
+  console.error('[api]', e);
+  return c.json({ error: e instanceof ConfigError ? e.message : 'Internal error: ' + e.message, hint: 'GET /api/health for config status' }, 500);
+});
 let init: Promise<void> | undefined;
 app.use('/api/*', async (_c, next) => { await (init ??= migrate().then(() => seedIfEmpty()).then(() => warmMeta()).catch(e => { init = undefined; throw e; })); await next(); });
 const evRow = (r: any) => ({ id: r.id, t: r.t, actor: r.actor, target: r.target, action: r.action, success: !!r.success, text: r.text, repA: r.rep_a, repB: r.rep_b });
 const summary = async (id: number) => { const r = await chogRow(id); return { tokenId: id, meta: getMeta(id), rep: r.rep, title: title(r.rep), energy: energyLeft(r), streak: r.streak_last && Date.now() - Date.parse(r.streak_last) < 2 * 864e5 ? r.streak_n : 0, achievements: JSON.parse(r.achievements) }; };
 
-app.get('/api/health', c => c.json({ ok: true, demo: DEMO_MODE }));
 app.get('/api/world', async c => c.json({
   events: Number((await q.get(dbc, 'select count(*) n from events'))?.n),
   relationships: Number((await q.get(dbc, 'select count(*) n from rels'))?.n),

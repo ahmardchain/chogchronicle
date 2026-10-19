@@ -1,15 +1,31 @@
-import { createClient, type Client, type InArgs, type Transaction } from '@libsql/client';
+import type { Client, InArgs, Transaction } from '@libsql/client';
 import fs from 'fs'; import path from 'path';
-/** Turso/libSQL in production (TURSO_DATABASE_URL + TURSO_AUTH_TOKEN); local SQLite file fallback for dev. */
-function makeClient(): Client {
-  const url = process.env.TURSO_DATABASE_URL;
-  if (url) return createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN });
-  if (process.env.VERCEL) throw new Error('TURSO_DATABASE_URL is required on Vercel (no persistent filesystem).');
-  const file = path.resolve(process.env.DB_PATH || 'data/chronicle.db');
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  return createClient({ url: 'file:' + file });
+/** Readable config error (reported as JSON by the API instead of crashing the function). */
+export class ConfigError extends Error {}
+/**
+ * Turso/libSQL in production (TURSO_DATABASE_URL + TURSO_AUTH_TOKEN) via the pure-JS web client (no native deps);
+ * local SQLite file fallback for dev via the Node client (loaded lazily so serverless never touches the native binary).
+ */
+let real: Promise<Client> | undefined;
+async function makeClient(): Promise<Client> {
+  const url = process.env.TURSO_DATABASE_URL?.trim();
+  if (url && !url.startsWith('file:')) {
+    const { createClient } = await import('@libsql/client/web');
+    return createClient({ url: url.replace(/^libsql:\/\//, 'https://'), authToken: process.env.TURSO_AUTH_TOKEN?.trim() });
+  }
+  if (process.env.VERCEL && !url) throw new ConfigError('TURSO_DATABASE_URL is not set. Add TURSO_DATABASE_URL and TURSO_AUTH_TOKEN in Vercel → Settings → Environment Variables, then redeploy.');
+  const { createClient } = await import('@libsql/client');
+  const file = url || 'file:' + path.resolve(process.env.DB_PATH || 'data/chronicle.db');
+  fs.mkdirSync(path.dirname(file.replace(/^file:/, '')), { recursive: true });
+  return createClient({ url: file });
 }
-export const client = makeClient();
+export const getClient = () => (real ??= makeClient().catch(e => { real = undefined; throw e; }));
+/** Lazy facade so importing this module never throws or opens connections. */
+export const client = {
+  execute: async (stmt: any) => (await getClient()).execute(stmt),
+  batch: async (stmts: any, mode?: any) => (await getClient()).batch(stmts, mode),
+  transaction: async (mode?: any) => (await getClient()).transaction(mode),
+} as unknown as Client;
 export type Exec = Client | Transaction;
 export const q = {
   get: async <T = any>(x: Exec, sql: string, args: InArgs = []) => (await x.execute({ sql, args })).rows[0] as T | undefined,
@@ -29,7 +45,7 @@ const SCHEMA = [
   `create table if not exists metadata(token_id integer primary key, json text)`,
 ];
 let ready: Promise<void> | undefined;
-export const migrate = () => ready ??= client.batch(SCHEMA, 'write').then(() => {});
+export const migrate = () => ready ??= client.batch(SCHEMA, 'write').then(() => {}).catch(e => { ready = undefined; throw e; });
 /** Run fn inside a write transaction (atomic action resolution). */
 export async function tx<T>(fn: (t: Transaction) => Promise<T>): Promise<T> {
   const t = await client.transaction('write');

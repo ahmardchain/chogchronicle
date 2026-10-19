@@ -8,6 +8,7 @@ async function h(req: Request) {
     u.pathname = '/api/' + u.searchParams.get('path'); u.searchParams.delete('path');
     req = new Request(u, req);
   }
-  return app.fetch(req);
+  try { return await app.fetch(req); }
+  catch (e) { return Response.json({ error: 'Unhandled: ' + (e as Error).message }, { status: 500 }); }
 }
 export const GET = h, POST = h, OPTIONS = h;
