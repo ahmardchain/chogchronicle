@@ -39,3 +39,4 @@ main.profile>section:first-child:not(:only-child){order:0}
 .lb{display:grid;grid-template-columns:20px 36px 1fr auto;gap:10px;align-items:center;padding:6px 0}
 footer{text-align:center;padding:40px}
 @media(max-width:800px){.hero,.profile,.cards3{grid-template-columns:1fr}.actions{grid-template-columns:1fr 1fr}}
+.live{font-size:11px}

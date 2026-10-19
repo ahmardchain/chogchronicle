@@ -59,3 +59,17 @@ Stretch: on-chain chronicle hash anchoring (Merkle root per day on Monad), ERC-6
 - Metadata: `tokenURI` → `ipfs://bafybeid4ybujnscdipkno7ps5utqelp5ry5ryreqhay3zhgk3a6x4jruqu/<n>.json`, images `ipfs://bafybeihau2egcccbdxymeckmmbrqytbfor5gkt3en6d5fsbueymdbq7g6e/<n>.webp`. Note tokenId ≠ name number (token 1 = "CHOG #1462"). Fetched via gateway.pinata.cloud (ipfs.io/dweb.link no longer serve directly). Cached 12 demo tokens in `public/chogs/` via `scripts/fetch-chogs.mjs`.
 - $CHOG token: chog.xyz.
 - Visual style: chogathon.chog.xyz CSS variables (bg `#0e0b1a`, card `#161228`, purple `#836ef9`/`#a99bfc`, gold `#f59e0b`, ok `#5ce68a`), fonts Koulen (display), Inter (body), JetBrains Mono (labels). Images `banner.jpg, og.jpg, chog1/5/6.jpg, chognice.jpg, chogwow.jpg, chogbadge.png` copied to `public/brand/` from chogathon.chog.xyz — brand assets of the hackathon host, used for a hackathon entry; confirm usage terms with organizers before public launch.
+
+## 10. Shared backend (implemented)
+- `server/` — Hono on Node + SQLite (better-sqlite3 v11, WAL). Tables: `chogs` (rep, energy, streak, achievements), `rels`, `events`, `balances` (mock $CHOG), `nonces`, `metadata` cache, `meta` (season).
+- **All game logic is server-side** (`server/engine.ts`): energy/day, rolls, relationships, achievements, streaks, feed, leaderboard. Clients only send intent `{tokenId, action, target}`. Each action runs in a SQLite transaction.
+- **Auth:** `GET /api/nonce?address=` → client signs EIP-191 message (`shared/stats.ts#actionMessage`: Chog, Action, Target, Nonce, Issued) → `POST /api/action` verified with viem `verifyMessage`, nonce single-use & ≤10 min, then on-chain `ownerOf(tokenId)` on Monad must equal signer.
+- **Demo mode** (`DEMO_MODE` env, default on): `{demo:true}` allowed only for tokens 1, 69, 777, unsigned, balance key `demo`. Set `DEMO_MODE=0` for production.
+- Seed: deterministic 60 historical events among 12 cached Chogs on first boot; `POST /api/admin/reset` (header `x-admin-token`, env `ADMIN_TOKEN`, demo mode only).
+- API: `/api/world, /known, /chogs?ids=, /chogs/:id, /rel/:a/:b, /feed, /leaderboard, /balance/:owner, /nonce, /action`.
+- Dev: Vite proxies `/api` → `:8787`. Prod: `npm run build && npm start` serves `dist/` + API from one process on `$PORT`.
+
+### Deploy options
+- **Railway / Fly.io / Render** (recommended): single Node service, mount a persistent volume at `/data`, set `DB_PATH=/data/chronicle.db`, `PORT`, `ADMIN_TOKEN`, `DEMO_MODE`, optionally `MONAD_RPC`. Fly: `fly launch` + `fly volumes create data`.
+- **Supabase**: swap `server/db.ts` for Postgres (same schema; `act` becomes a SQL transaction / RPC function). Frontend can stay on Vercel/Netlify with `/api` pointed at the backend.
+- Note: SQLite = one instance only (no horizontal scaling) — fine for a hackathon.
