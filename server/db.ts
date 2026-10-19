@@ -43,9 +43,17 @@ const SCHEMA = [
   `create table if not exists used_tx(hash text primary key, event_id text, created integer)`,
   `create table if not exists demo_energy(session text, token_id integer, day text, used integer, primary key(session, token_id))`,
   `create table if not exists metadata(token_id integer primary key, json text)`,
+  `create table if not exists daemons(token_id integer primary key, rep integer default 100, fort integer default 0, curses text default '[]', intel text default '[]', last_owner text, inherited text, awake integer default 1)`,
+  `create table if not exists tiles(tile_id integer primary key, owner integer not null)`,
+  `create table if not exists orders(token_id integer, day text, card text, target integer, source text, issuer text, created integer, resolved_at integer, event_id text, primary key(token_id, day))`,
+  `create index if not exists orders_pending on orders(resolved_at)`,
+  `create table if not exists guests(session text primary key, token_id integer, adopted_at integer, last_seen integer)`,
+  `create table if not exists bounties(id text primary key, target integer, amount integer, poster text, created integer, claimed_by integer, claimed_at integer, tx text)`,
 ];
 let ready: Promise<void> | undefined;
-export const migrate = () => ready ??= client.batch(SCHEMA, 'write').then(() => {}).catch(e => { ready = undefined; throw e; });
+export const migrate = () => ready ??= client.batch(SCHEMA, 'write')
+  .then(() => client.execute('alter table events add column data text').catch(() => {})) // idempotent column add
+  .then(() => {}).catch(e => { ready = undefined; throw e; });
 /** Run fn inside a write transaction (atomic action resolution). */
 export async function tx<T>(fn: (t: Transaction) => Promise<T>): Promise<T> {
   const t = await client.transaction('write');

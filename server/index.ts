@@ -8,4 +8,4 @@ const app = new Hono();
 app.route('/', api);
 app.use('/*', serveStatic({ root: './dist' }));
 app.get('*', serveStatic({ path: './dist/index.html' }));
-serve({ fetch: app.fetch, port: PORT }, i => console.log(`ChogChronicle API on :${i.port} (db=${process.env.TURSO_DATABASE_URL ? 'turso' : 'local file'}, demo=${process.env.DEMO_MODE !== '0'})`));
+serve({ fetch: app.fetch, port: PORT }, i => console.log(`Chog Daemons API on :${i.port} (db=${process.env.TURSO_DATABASE_URL ? 'turso' : 'local file'}, demo=${process.env.DEMO_MODE !== '0'})`));
