@@ -41,7 +41,7 @@ const nm = (id: number) => metaCache.get(id)?.name.replace('CHOG ', 'Chog ') ?? 
 let rnd = Math.random;
 const pick = <T,>(a: T[]) => a[Math.floor(rnd() * a.length)];
 /** Core resolution. Server-only: rolls, rep, relationships, achievements. */
-function resolve(actor: number, target: number, action: Action, t: number, owner: string, signer: string | null): Event {
+function resolve(actor: number, target: number, action: Action, t: number, owner: string, signer: string | null, giftTx?: string): Event {
   const A = metaCache.get(actor)!, B = metaCache.get(target)!;
   const sa = stats(A), sb = stats(B);
   const r = getRel(actor, target); const ra = chogRow(actor), rb = chogRow(target);
@@ -62,14 +62,15 @@ function resolve(actor: number, target: number, action: Action, t: number, owner
     repA = success ? Math.round(8 * mult) : -6; repB = success ? -3 : 2;
     text = success ? pick([`${a} replaced ${b}'s hat with a frog. Legendary prank.`, `${a} rugged ${b}'s lunch. Chaos +.`]) : `${a} tried to prank ${b} but slipped on their own banana.`;
   } else {
-    r.bond += 25; repA = Math.round(10 * mult); repB = 6; setBal(owner, balanceOf(owner) - 25);
-    text = `${a} gifted 25 $CHOG to ${b}. Generous Chog energy.`;
+    r.bond += 25; repA = Math.round(10 * mult); repB = 6; if (!giftTx) setBal(owner, balanceOf(owner) - 25);
+    text = `${a} gifted 25 $CHOG to ${b}${giftTx ? ' on-chain' : ''}. Generous Chog energy.`;
   }
   r.bond = Math.max(-100, Math.min(100, r.bond)); putRel(actor, target, r);
   db.prepare('update chogs set rep=? where token_id=?').run(ra.rep + repA, actor);
   db.prepare('update chogs set rep=rep+? where token_id=?').run(repB, target);
   const ev: Event = { id: randomUUID(), t, actor, target, action, success, text, repA, repB };
   db.prepare('insert into events values(?,?,?,?,?,?,?,?,?,?)').run(ev.id, t, actor, target, action, +success, text, repA, repB, signer);
+  if (giftTx) db.prepare('insert into used_tx values(?,?,?)').run(giftTx.toLowerCase(), ev.id, t);
   unlock(actor); unlock(target);
   void rb; return ev;
 }
@@ -89,21 +90,31 @@ function unlock(id: number) {
   db.prepare('update chogs set achievements=? where token_id=?').run(JSON.stringify([...has]), id);
 }
 /** Validated player action (auth handled by caller). */
-export const act = db.transaction((actor: number, target: number, action: Action, owner: string, signer: string | null): Event | string => {
+export type ActOpts = { owner: string; signer: string | null; demoSession?: string; giftTx?: string };
+export function demoEnergyLeft(session: string, id: number, t = Date.now()) {
+  const r = db.prepare('select day, used from demo_energy where session=? and token_id=?').get(session, id) as { day: string; used: number } | undefined;
+  return r && r.day === today(t) ? ENERGY - r.used : ENERGY;
+}
+export const act = db.transaction((actor: number, target: number, action: Action, o: ActOpts): Event | string => {
   if (actor === target) return 'A Chog cannot interact with itself.';
   if (!metaCache.has(actor) || !metaCache.has(target)) return 'Unknown Chog metadata.';
   const row = chogRow(actor); const t = Date.now(); const d = today(t);
-  if (energyLeft(row, t) <= 0) return 'Out of energy today. Come back tomorrow!';
-  if (action === 'gift' && balanceOf(owner) < 25) return 'Not enough $CHOG.';
+  const left = o.demoSession ? demoEnergyLeft(o.demoSession, actor, t) : energyLeft(row, t);
+  if (left <= 0) return 'Out of energy today. Come back tomorrow!';
+  if (action === 'gift' && !o.giftTx && balanceOf(o.owner) < 25) return 'Not enough $CHOG.';
+  if (o.giftTx && db.prepare('select 1 from used_tx where hash=?').get(o.giftTx.toLowerCase())) return 'Gift transaction already used.';
   const y = today(t - 864e5);
   const streak = row.streak_last === d ? row.streak_n : row.streak_last === y ? row.streak_n + 1 : 1;
-  db.prepare('update chogs set energy_day=?, energy_used=?, streak_last=?, streak_n=? where token_id=?').run(d, row.energy_day === d ? row.energy_used + 1 : 1, d, streak, actor);
-  return resolve(actor, target, action, t, owner, signer);
+  if (o.demoSession) {
+    db.prepare('insert into demo_energy values(?,?,?,1) on conflict(session, token_id) do update set used = case when day=excluded.day then used+1 else 1 end, day=excluded.day').run(o.demoSession, actor, d);
+    db.prepare('update chogs set streak_last=?, streak_n=? where token_id=?').run(d, streak, actor);
+  } else db.prepare('update chogs set energy_day=?, energy_used=?, streak_last=?, streak_n=? where token_id=?').run(d, row.energy_day === d ? row.energy_used + 1 : 1, d, streak, actor);
+  return resolve(actor, target, action, t, o.owner, o.signer, o.giftTx);
 });
 export function seedIfEmpty(force = false) {
   const n = (db.prepare('select count(*) n from events').get() as { n: number }).n;
   if (n && !force) return;
-  db.exec('delete from chogs; delete from rels; delete from events; delete from balances; delete from nonces;');
+  db.exec('delete from chogs; delete from rels; delete from events; delete from balances; delete from nonces; delete from demo_energy; delete from used_tx;');
   db.prepare("insert or replace into meta values('season','1')").run();
   let x = 1969; rnd = () => ((x = Math.imul(x ^ (x >>> 15), 2246822507) + 0x9e3779b9 | 0) >>> 0) / 4294967296;
   const ids = DEMO.map(c => c.tokenId); const acts: Action[] = ['challenge', 'challenge', 'befriend', 'befriend', 'prank', 'gift'];
@@ -118,4 +129,23 @@ export function seedIfEmpty(force = false) {
     db.prepare("delete from balances where owner='seed'").run();
   })();
   rnd = Math.random;
+}
+
+// ---- On-chain $CHOG gift verification ----
+import { CHOG_TOKEN, GIFT_AMOUNT } from '../shared/stats';
+import { parseAbi as pa, parseEventLogs } from 'viem';
+const erc20 = pa(['function decimals() view returns (uint8)', 'event Transfer(address indexed from, address indexed to, uint256 value)']);
+let decimals: number | undefined;
+export async function chogDecimals() { return decimals ??= Number(await client.readContract({ address: CHOG_TOKEN, abi: erc20, functionName: 'decimals' })); }
+/** Returns null if OK, else error string. */
+export async function verifyGiftTx(hash: `0x${string}`, from: string, to: string): Promise<string | null> {
+  if (db.prepare('select 1 from used_tx where hash=?').get(hash.toLowerCase())) return 'Gift transaction already used.';
+  let rc;
+  for (let i = 0; i < 10 && !rc; i++) { try { rc = await client.getTransactionReceipt({ hash }); } catch { await new Promise(r => setTimeout(r, 1000)); } }
+  if (!rc) return 'Transaction receipt not found on Monad.';
+  if (rc.status !== 'success') return 'Gift transaction reverted.';
+  const need = BigInt(GIFT_AMOUNT) * 10n ** BigInt(await chogDecimals());
+  const logs = parseEventLogs({ abi: erc20, logs: rc.logs, eventName: 'Transfer' });
+  const ok = logs.some(l => l.address.toLowerCase() === CHOG_TOKEN.toLowerCase() && l.args.from.toLowerCase() === from.toLowerCase() && l.args.to.toLowerCase() === to.toLowerCase() && l.args.value >= need);
+  return ok ? null : `No ${GIFT_AMOUNT} $CHOG Transfer from ${from} to ${to} in that tx.`;
 }

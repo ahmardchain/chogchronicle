@@ -31,5 +31,7 @@ export const ACHIEVEMENTS: Record<string, string> = {
 export type Action = 'challenge' | 'befriend' | 'prank' | 'gift';
 export const ACTIONS: Action[] = ['challenge', 'befriend', 'prank', 'gift'];
 export type Event = { id: string; t: number; actor: number; target: number; action: Action; success: boolean; text: string; repA: number; repB: number };
-export const actionMessage = (p: { tokenId: number; action: string; target: number; nonce: string; issuedAt: number }) =>
-  `ChogChronicle action\nChog: ${p.tokenId}\nAction: ${p.action}\nTarget: ${p.target}\nNonce: ${p.nonce}\nIssued: ${p.issuedAt}`;
+export const actionMessage = (p: { tokenId: number; action: string; target: number; nonce: string; issuedAt: number; tx?: string }) =>
+  `ChogChronicle action\nChog: ${p.tokenId}\nAction: ${p.action}\nTarget: ${p.target}\nNonce: ${p.nonce}\nIssued: ${p.issuedAt}` + (p.tx ? `\nTx: ${p.tx.toLowerCase()}` : '');
+export const CHOG_TOKEN = '0x350035555E10d9AfAF1566AaebfCeD5BA6C27777' as const;
+export const GIFT_AMOUNT = 25;

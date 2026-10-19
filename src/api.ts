@@ -17,3 +17,6 @@ export const useFeed = () => q<Event[]>('/feed?limit=50');
 export const useBoard = () => q<Summary[]>('/leaderboard');
 export const useBalance = (owner: string) => q<{ balance: number }>('/balance/' + owner);
 export const useInvalidate = () => { const qc = useQueryClient(); return () => qc.invalidateQueries(); };
+
+export const demoSession = (() => { let s = localStorage.getItem('cc.session'); if (!s) { s = crypto.randomUUID(); localStorage.setItem('cc.session', s); } return s; })();
+export const useDemoEnergy = (ids: number[], on: boolean) => q<Record<number, number>>(`/demo-energy?session=${demoSession}&ids=${ids.join(',')}`, { enabled: on && ids.length > 0 });

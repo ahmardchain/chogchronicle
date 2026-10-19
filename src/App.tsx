@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { useAccount, useConnect, useDisconnect, useSignMessage } from 'wagmi';
-import { ACHIEVEMENTS, ACTIONS, DEMO_OWNED, ENERGY, actionMessage, ownedTokenIds, ownerOf, stats, type Action, type Chog, type Event } from './chogs';
-import { get, post, useBalance, useBoard, useFeed, useInvalidate, useKnown, useProfile, useSummaries, useWorld, type Summary } from './api';
+import { useAccount, useConnect, useDisconnect, useSignMessage, useReadContracts, useWriteContract, useConfig } from 'wagmi';
+import { waitForTransactionReceipt } from 'wagmi/actions';
+import { erc20Abi, formatUnits, parseUnits } from 'viem';
+import { ACHIEVEMENTS, ACTIONS, DEMO_OWNED, ENERGY, actionMessage, ownedTokenIds, ownerOf, stats, CHOG_TOKEN, GIFT_AMOUNT, type Action, type Chog, type Event } from './chogs';
+import { get, post, useBalance, useBoard, useFeed, useInvalidate, useKnown, useProfile, useSummaries, useWorld, demoSession, useDemoEnergy, type Summary } from './api';
 
 function useMyChogs() {
   const { address } = useAccount();
@@ -18,6 +20,14 @@ function useMyChogs() {
   }, [address]);
   const save = (n: number[]) => { setIds(n); localStorage.setItem('cc.mine', JSON.stringify(n)); };
   return { ids, setIds: save, note, setNote, address };
+}
+/** Real on-chain $CHOG in wallet mode, per-session mock balance in demo mode. */
+function useChogBalance() {
+  const { address } = useAccount(); const { data: mock } = useBalance('demo:' + demoSession);
+  const { data } = useReadContracts({ contracts: address ? [{ address: CHOG_TOKEN, abi: erc20Abi, functionName: 'balanceOf', args: [address], chainId: 143 }, { address: CHOG_TOKEN, abi: erc20Abi, functionName: 'decimals', chainId: 143 }] : [], query: { enabled: !!address, refetchInterval: 10000 } });
+  if (!address) return { text: `${mock?.balance ?? '…'} $CHOG (demo)`, decimals: 18 };
+  const bal = data?.[0]?.result as bigint | undefined, dec = (data?.[1]?.result as number | undefined) ?? 18;
+  return { text: bal === undefined ? '… $CHOG' : `${Number(formatUnits(bal, dec)).toLocaleString(undefined, { maximumFractionDigits: 2 })} $CHOG`, decimals: dec, raw: bal };
 }
 function useMeta() { const { data } = useKnown(); const m = new Map<number, Chog>(); data?.forEach(c => m.set(c.tokenId, c)); return m; }
 
@@ -57,18 +67,18 @@ function Landing() {
   </main>;
 }
 
-function ChogCard({ s }: { s: Summary }) {
-  const c = s.meta;
+function ChogCard({ s, energy }: { s: Summary; energy?: number }) {
+  const c = s.meta; const en = energy ?? s.energy;
   return <Link to={`/chog/${c.tokenId}`} className="card chogcard"><Img c={c} size={180} />
     <div className="cn">{short(c.name)}</div><div className="mono mu">tokenId {c.tokenId}</div>
     <div className="row sp"><span className="chip">{s.title}</span><span className="gold">★ {s.rep}</span></div>
-    <div className="energy">{Array.from({ length: ENERGY }, (_, i) => <i key={i} className={i < s.energy ? 'on' : ''} />)}<span className="mono mu">🔥 {s.streak}d</span></div>
+    <div className="energy">{Array.from({ length: ENERGY }, (_, i) => <i key={i} className={i < en ? 'on' : ''} />)}<span className="mono mu">🔥 {s.streak}d</span></div>
   </Link>;
 }
 
 function MyChogs() {
   const { ids, setIds, note, setNote, address } = useMyChogs(); const [add, setAdd] = useState('');
-  const { data: chogs } = useSummaries(ids); const { data: bal } = useBalance(address || 'demo');
+  const { data: chogs } = useSummaries(ids); const bal = useChogBalance(); const { data: de } = useDemoEnergy(ids, !address);
   const addId = async () => {
     const id = Number(add); if (!(id >= 1 && id <= 1969)) return setNote('tokenId must be 1–1969');
     try {
@@ -76,10 +86,10 @@ function MyChogs() {
       await get('/chogs/' + id); setIds([...new Set([...ids, id])]); setNote(address ? 'Ownership verified on Monad ✓' : 'Added (view only — demo mode can act only as demo Chogs).'); setAdd('');
     } catch (e) { setNote('Error: ' + (e as Error).message); }
   };
-  return <main><div className="row sp"><h2>My Chogs</h2><span className="chip gold">{bal?.balance ?? '…'} $CHOG {address ? '' : '(demo)'}</span></div>
-    {!address && <p className="banner">Demo mode — acting as sample Chogs {DEMO_OWNED.join(', ')} in the shared world. Connect a wallet holding Chog Genesis to play as your own (actions are wallet-signed).</p>}
+  return <main><div className="row sp"><h2>My Chogs</h2><span className="chip gold">{bal.text}</span></div>
+    {!address && <p className="banner">Demo mode — acting as sample Chogs {DEMO_OWNED.join(', ')} in the shared world, with your own daily energy. Connect a wallet holding Chog Genesis to play as your own (actions are wallet-signed).</p>}
     {note && <p className="banner">{note}</p>}
-    <div className="grid">{chogs?.map(s => <ChogCard key={s.tokenId} s={s} />)}</div>
+    <div className="grid">{chogs?.map(s => <ChogCard key={s.tokenId} s={s} energy={address ? undefined : de?.[s.tokenId]} />)}</div>
     <div className="row" style={{ marginTop: 24 }}><input value={add} onChange={e => setAdd(e.target.value)} placeholder="Add tokenId (1–1969)" /><button className="btn ghost" onClick={addId}>Add Chog</button></div>
   </main>;
 }
@@ -91,7 +101,7 @@ function EventLine({ e, meta }: { e: Event; meta: Map<number, Chog> }) {
 }
 
 function Profile() {
-  const id = Number(useParams().id); const { data: p, error } = useProfile(id); const mine = useMyChogs().ids; const meta = useMeta();
+  const id = Number(useParams().id); const { data: p, error } = useProfile(id); const { ids: mine, address } = useMyChogs(); const meta = useMeta(); const { data: de } = useDemoEnergy([id], !address);
   if (error) return <main><p className="banner">{(error as Error).message}</p></main>;
   if (!p) return <main><p className="mu">Loading Chog {id}…</p></main>;
   const c = p.meta; const st = stats(c);
@@ -100,7 +110,7 @@ function Profile() {
       <div className="row sp"><span className="chip">{p.title}</span><span className="gold big">★ {p.rep}</span></div>
       {(['chaos', 'charm', 'grit'] as const).map(k => <div key={k} className="stat"><span className="mono">{k.toUpperCase()}</span><div className="bar"><i style={{ width: st[k] + '%' }} /></div><b>{st[k]}</b></div>)}
       <div className="traits">{c.attributes.map(a => <span key={a.trait_type} className="chip"><small>{a.trait_type}</small> {a.value}</span>)}</div>
-      {mine.includes(id) ? <Link className="btn full" to={`/interact/${id}`}>Interact ({p.energy}/{ENERGY} energy)</Link>
+      {mine.includes(id) ? <Link className="btn full" to={`/interact/${id}`}>Interact ({address ? p.energy : de?.[id] ?? '…'}/{ENERGY} energy)</Link>
         : mine[0] && <Link className="btn full ghost" to={`/interact/${mine[0]}?target=${id}`}>Interact with this Chog</Link>}
     </aside>
     <section>
@@ -115,9 +125,9 @@ function Profile() {
 
 function Interact() {
   const id = Number(useParams().id); const [sp] = useSearchParams(); const nav = useNavigate();
-  const { address } = useAccount(); const { signMessageAsync } = useSignMessage(); const inval = useInvalidate();
+  const { address } = useAccount(); const { signMessageAsync } = useSignMessage(); const { writeContractAsync } = useWriteContract(); const cfg = useConfig(); const inval = useInvalidate(); const [status, setStatus] = useState('');
   const [target, setTarget] = useState<number>(Number(sp.get('target')) || 0); const [res, setRes] = useState<Event | string | null>(null); const [busy, setBusy] = useState(false);
-  const { data: meP } = useProfile(id); const meta = useMeta(); const { data: bal } = useBalance(address || 'demo');
+  const { data: meP } = useProfile(id); const meta = useMeta(); const bal = useChogBalance(); const { data: de } = useDemoEnergy([id], !address);
   const r = target ? meP?.rels.find(x => x.other === target) : undefined;
   const me = meta.get(id) ?? meP?.meta; const others = [...meta.values()].filter(c => c.tokenId !== id);
   if (!me) return <main><p className="mu">Loading…</p></main>;
@@ -127,20 +137,30 @@ function Interact() {
     try {
       let body: Record<string, unknown> = { tokenId: id, target, action };
       if (address) {
+        let txHash: `0x${string}` | undefined;
+        if (action === 'gift') {
+          setStatus('Looking up the owner of the target Chog…');
+          const to = await ownerOf(target);
+          setStatus(`Confirm the ${GIFT_AMOUNT} $CHOG transfer to ${to.slice(0, 8)}… in your wallet`);
+          txHash = await writeContractAsync({ address: CHOG_TOKEN, abi: erc20Abi, functionName: 'transfer', args: [to, parseUnits(String(GIFT_AMOUNT), bal.decimals)], chainId: 143 });
+          setStatus('Waiting for Monad confirmation…'); await waitForTransactionReceipt(cfg, { hash: txHash, chainId: 143 });
+        }
+        setStatus('Sign the action message…');
         const { nonce, issuedAt } = await get<{ nonce: string; issuedAt: number }>('/nonce?address=' + address);
-        const signature = await signMessageAsync({ message: actionMessage({ tokenId: id, action, target, nonce, issuedAt }) });
-        body = { ...body, address, nonce, issuedAt, signature };
-      } else body.demo = true;
+        const signature = await signMessageAsync({ message: actionMessage({ tokenId: id, action, target, nonce, issuedAt, tx: txHash }) });
+        body = { ...body, address, nonce, issuedAt, signature, txHash };
+        setStatus(txHash ? 'Server is verifying your gift on Monad…' : '');
+      } else { body.demo = true; body.demoSession = demoSession; }
       const out = await post<{ event: Event }>('/action', body); setRes(out.event);
     } catch (e) { setRes((e as Error).message); }
-    setBusy(false); inval();
+    setBusy(false); setStatus(''); inval();
   };
-  const energy = meP?.energy ?? 0;
-  return <main><h2>Interact as {short(me.name)}</h2><p className="mu">{energy}/{ENERGY} energy left today · {bal?.balance ?? '…'} $CHOG · {address ? 'actions are signed with your wallet' : 'demo mode'}</p>
+  const energy = address ? meP?.energy ?? 0 : de?.[id] ?? 0;
+  return <main><h2>Interact as {short(me.name)}</h2><p className="mu">{energy}/{ENERGY} energy left today · {bal.text} · {address ? 'actions are signed with your wallet; gifts are real $CHOG transfers' : 'demo mode (your own energy)'}</p>{status && <p className="banner">{status}</p>}
     <div className="versus card"><div><Img c={me} size={160} /><b>{short(me.name)}</b></div><div className="vs">VS</div>
       <div>{T ? <><Img c={T} size={160} /><b>{short(T.name)}</b>{r && <span className={'chip ' + r.label.cls}>{r.label.label} · bond {r.r.bond}</span>}</> : <div className="pfp empty">?</div>}</div></div>
     <h3>Choose a Chog</h3><div className="picker">{others.map(c => <button key={c.tokenId} className={c.tokenId === target ? 'sel' : ''} onClick={() => { setTarget(c.tokenId); setRes(null); }}><Img c={c} size={64} /><small>{short(c.name)}</small></button>)}</div>
-    {T && <div className="actions">{ACTIONS.map(a => <button key={a} className="btn" disabled={busy || energy <= 0} onClick={() => doAct(a)}>{ICON[a]} {a[0].toUpperCase() + a.slice(1)}{a === 'gift' ? ' 25 $CHOG' : ''}</button>)}</div>}
+    {T && <div className="actions">{ACTIONS.map(a => <button key={a} className="btn" disabled={busy || energy <= 0} onClick={() => doAct(a)}>{ICON[a]} {a[0].toUpperCase() + a.slice(1)}{a === 'gift' ? ` ${GIFT_AMOUNT} $CHOG` : ''}</button>)}</div>}
     {res && (typeof res === 'string' ? <p className="banner">{res}</p> : <div className={'result card ' + (res.success ? 'win' : 'lose')}><div className="big">{res.success ? 'SUCCESS' : 'FAILED'}</div><p>{res.text}</p>
       <div className="row"><button className="btn ghost" onClick={() => nav(`/chog/${id}`)}>View chronicle</button></div></div>)}
   </main>;

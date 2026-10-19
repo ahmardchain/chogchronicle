@@ -12,5 +12,7 @@ create index if not exists ev_actor on events(actor); create index if not exists
 create table if not exists balances(owner text primary key, bal integer not null);
 create table if not exists nonces(nonce text primary key, address text, created integer, used integer default 0);
 create table if not exists meta(k text primary key, v text);
+create table if not exists used_tx(hash text primary key, event_id text, created integer);
+create table if not exists demo_energy(session text, token_id integer, day text, used integer, primary key(session, token_id));
 create table if not exists metadata(token_id integer primary key, json text);
 `);
