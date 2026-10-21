@@ -1,26 +1,3 @@
-# Chog Daemons — Design (pivot from ChogChronicle, Oct 19 2026)
-
-**Pitch:** Every Chog has a mind of its own. Give it one secret order a day; it fights, allies and schemes for territory on a world map of all 1,969 Chogs, even while you're offline. Its memory, grudges and land go with it if it's sold. (Research: /workspace/research/chogathon-deep-research.md.)
-
-## Phase 1 (implemented)
-- **Map:** 47×42 grid = 1,969 tiles; tile #N is Chog #N's home (a sanctuary that can't be taken from an awake daemon). Seed splits wilderness between 95 pool daemons (Voronoi). Canvas renderer: zoom/pan/pinch, avatars on home tiles, territory borders, gold outline for yours, flashes on ownership change, live refresh.
-- **Temperament** (`shared/daemons.ts`): Aggression / Loyalty / Mischief / Greed from on-chain traits (+ trait keyword bonuses). Determines *instinct* (idle card), auto-order weights and **perks** that change card effects (Greedy raid +1 tile, Stalwart fortify +2 walls, Menace prank drains rep, Sneaky scout 2-day intel, Ruthless/Hesitant betray…). Same card ≠ same result across Chogs.
-- **Order cards:** Raid, Fortify, Ally, Betray, Prank, Scout. RPS matrix: each beats 2, loses to 2, neutral with 1 (neutral → stat contest + intel bonus). Raid>Ally,Scout · Fortify>Raid,Prank · Ally>Prank,Scout · Betray>Ally,Fortify · Prank>Raid,Betray · Scout>Betray,Fortify. Target's card = its own sealed order for the day, else its instinct. Orders are secret (API hides them from non-issuers until resolved).
-- **Effects:** land transfer (border tiles first), walls absorb raids, curses (3 days), intel, bonds/rivals/nemesis (Betray only works on bond ≥ 20), rep, bounties claimed on wins.
-- **Ticks:** 30-min world tick; Vercel Cron (daily on Hobby, `CRON_SECRET`) + lazy catch-up on every request; DB lock. Engine is in-memory (`server/world.ts`): load ≤5 queries → simulate → persist diff in batched writes.
-- **Autonomous daemons:** idle daemons act once per day at a personal hashed slot, choosing card+target by personality and memory (grudges → raid/prank foes, betray best ally if greedy, ally neighbours if loyal).
-- **Diary:** template first-person lines generated from the token's real events (`diaryLine`), grouped by day; recap modal "While you were asleep…".
-- **Inherited memory:** owner change detected on signed orders (ownerOf vs last_owner) → snapshot (tiles, rivals, curses, rep) shown as "You inherited…". Guest adoption shows the same card.
-- **Demo-first:** per-session guest daemon (distinct from other active guests), seal order → fast-forward → recap; adopt another.
-- **Wallet mode:** EIP-191 signed orders (`orderMessage`: Chog, Card, Target, Day, Nonce, Issued), DB nonces, ownerOf on Monad; awakening reclaims the home tile.
-- **$CHOG:** bounties (demo: mock balance; wallet: verified ERC-20 transfer to `TREASURY_ADDRESS`, receipt + Transfer log check, no tx reuse). Claimed by whoever beats the target; credited to the claimant's keeper.
-
-## Next phases
-2. Share cards (Wanted/Warlord poster with map snippet, OG image), seasons with crown, territory tax stub → real tax, extra-order fuel via $CHOG.
-3. Optional LLM pass over diary templates (strictly grounded in events), time-lapse map replay for the video hook, wallet "switch owner" demo for inheritance, NFT-holder onboarding for non-pool Chogs (metadata cache, avatars).
-
----
-## Legacy (ChogChronicle) notes
 # ChogChronicle — Design Doc (Chogathon 2026)
 
 > "A persistent social world where every Chog NFT builds its own reputation, relationships, rivalries, achievements, and history through interactions with other Chogs." — Ahmard's pitch

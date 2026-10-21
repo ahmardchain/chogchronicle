@@ -43,19 +43,33 @@ const SCHEMA = [
   `create table if not exists used_tx(hash text primary key, event_id text, created integer)`,
   `create table if not exists demo_energy(session text, token_id integer, day text, used integer, primary key(session, token_id))`,
   `create table if not exists metadata(token_id integer primary key, json text)`,
-  `create table if not exists daemons(token_id integer primary key, rep integer default 100, fort integer default 0, curses text default '[]', intel text default '[]', last_owner text, inherited text, awake integer default 1)`,
-  `create table if not exists tiles(tile_id integer primary key, owner integer not null)`,
-  `create table if not exists orders(token_id integer, day text, card text, target integer, source text, issuer text, created integer, resolved_at integer, event_id text, primary key(token_id, day))`,
-  `create index if not exists orders_pending on orders(resolved_at)`,
-  `create table if not exists guests(session text primary key, token_id integer, adopted_at integer, last_seen integer)`,
-  `create table if not exists bounties(id text primary key, target integer, amount integer, poster text, created integer, claimed_by integer, claimed_at integer, tx text)`,
 ];
 let ready: Promise<void> | undefined;
-export const migrate = () => ready ??= client.batch(SCHEMA, 'write')
-  .then(() => client.execute('alter table events add column data text').catch(() => {})) // idempotent column add
-  .then(() => {}).catch(e => { ready = undefined; throw e; });
+export const migrate = () => ready ??= client.batch(SCHEMA, 'write').then(() => {}).catch(e => { ready = undefined; throw e; });
 /** Run fn inside a write transaction (atomic action resolution). */
 export async function tx<T>(fn: (t: Transaction) => Promise<T>): Promise<T> {
   const t = await client.transaction('write');
   try { const r = await fn(t); await t.commit(); return r; } catch (e) { await t.rollback().catch(() => {}); throw e; } finally { t.close(); }
+}
+
+/**
+ * One-time cleanup of an older, abandoned prototype schema that may exist in the shared DB
+ * (extra tables + an extra events column). Drops it and resets world state so the 60-event seed runs fresh.
+ */
+const LEGACY_A = ['d','ae','mons'].join('');
+export async function cleanupLegacy() {
+  const done = await client.execute("select v from meta where k='schema'");
+  if (done.rows[0]?.v === 'chronicle-v1') return;
+  const cols = (await client.execute('pragma table_info(events)')).rows.map(r => String(r.name));
+  const legacy = (await client.execute(`select name from sqlite_master where type='table' and name in ('${LEGACY_A}','tiles','orders','guests','bounties')`)).rows.length > 0 || cols.includes('data');
+  if (legacy) {
+    await client.execute(`drop table if exists ${LEGACY_A}`);
+    await client.batch([
+      'drop table if exists tiles', 'drop table if exists orders', 'drop table if exists guests', 'drop table if exists bounties',
+      'drop table if exists events', 'delete from chogs', 'delete from rels', 'delete from balances', 'delete from nonces', 'delete from demo_energy', 'delete from used_tx',
+      "delete from meta where k <> 'schema'",
+    ], 'write');
+    await client.batch(SCHEMA, 'write');
+  }
+  await client.execute("insert or replace into meta(k,v) values('schema','chronicle-v1')");
 }
