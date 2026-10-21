@@ -8,6 +8,7 @@ import { ACTIONS, CHOG_TOKEN, ENERGY, GIFT_AMOUNT, actionMessage, ownerOf, stats
 import { demoSession, get, post, useDemoEnergy, useInvalidate, useProfile } from '../api';
 import { ICON, short, useChogBalance, useMeta } from '../hooks';
 import { Energy, Img, Page, confetti, sfx, useToast } from '../ui';
+import { PactWarning } from '../pactbits';
 type Phase = 'idle' | 'clash' | 'reveal';
 const VERB: Record<Action, string> = { challenge: 'DUEL', befriend: 'BOND', prank: 'PRANK', gift: 'GIFT' };
 export default function Interact() {
@@ -80,6 +81,7 @@ export default function Interact() {
     </div>
     <AnimatePresence>{phase === 'reveal' && res && <motion.div className="card story" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
       <p>📜 {res.text}</p><div className="row"><button className="btn ln" onClick={() => nav(`/chog/${id}`)}>View chronicle</button><button className="btn ln" onClick={() => { setPhase('idle'); setRes(null); }}>Go again</button></div></motion.div>}</AnimatePresence>
+    {T && <PactWarning a={id} b={target} />}
     {T && <div className="actions">{ACTIONS.map(a => <motion.button key={a} whileTap={{ scale: .94 }} className={'btn act-' + a} disabled={phase === 'clash' || energy <= 0} onClick={() => doAct(a)}>
       <span className="ic">{ICON[a]}</span>{a}{a === 'gift' ? ` ${GIFT_AMOUNT} $CHOG` : ''}</motion.button>)}</div>}
     {T && energy <= 0 && <p className="banner">Out of energy for today — your Chog rests. Come back tomorrow to keep your 🔥 streak.</p>}

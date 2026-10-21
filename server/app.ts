@@ -3,6 +3,7 @@ import { randomBytes } from 'crypto';
 import { isAddress, verifyMessage } from 'viem';
 import { client as dbc, migrate, q, ConfigError, cleanupLegacy } from './db.js';
 import { act, verifyGiftTx, demoEnergyLeft, balanceOf, chogRow, client, CHOG_NFT, energyLeft, getMeta, getRel, loadMeta, nftAbi, relsOf, seedIfEmpty, warmMeta } from './engine.js';
+import { registerPacts, afterAction } from './pacts.js';
 import { ACTIONS, DEMO_OWNED, actionMessage, relLabel, title, type Action } from '../shared/stats.js';
 
 const DEMO_MODE = process.env.DEMO_MODE !== '0';
@@ -22,6 +23,7 @@ app.onError((e, c) => {
 });
 let init: Promise<void> | undefined;
 app.use('/api/*', async (_c, next) => { await (init ??= migrate().then(() => cleanupLegacy()).then(() => seedIfEmpty()).then(() => warmMeta()).catch(e => { init = undefined; throw e; })); await next(); });
+registerPacts(app);
 const evRow = (r: any) => ({ id: r.id, t: r.t, actor: r.actor, target: r.target, action: r.action, success: !!r.success, text: r.text, repA: r.rep_a, repB: r.rep_b });
 const summary = async (id: number) => { const r = await chogRow(id); return { tokenId: id, meta: getMeta(id), rep: r.rep, title: title(r.rep), energy: energyLeft(r), streak: r.streak_last && Date.now() - Date.parse(r.streak_last) < 2 * 864e5 ? r.streak_n : 0, achievements: JSON.parse(r.achievements) }; };
 
@@ -92,7 +94,8 @@ app.post('/api/action', async c => {
   try { await loadMeta(tokenId); await loadMeta(target); } catch { return c.json({ error: 'metadata unavailable' }, 502); }
   const r = await act(tokenId, target, action, { owner, signer, demoSession, giftTx });
   if (typeof r === 'string') return c.json({ error: r }, 409);
-  return c.json({ event: r, balance: await balanceOf(owner), energy: demoSession ? await demoEnergyLeft(demoSession, tokenId) : undefined });
+  const betrayal = await afterAction(r, owner).catch(e => { console.error('[pacts]', e); return null; });
+  return c.json({ event: r, betrayal, balance: await balanceOf(owner), energy: demoSession ? await demoEnergyLeft(demoSession, tokenId) : undefined });
 });
 app.post('/api/admin/reset', async c => {
   if (!DEMO_MODE || c.req.header('x-admin-token') !== (process.env.ADMIN_TOKEN || 'dev')) return c.json({ error: 'forbidden' }, 403);

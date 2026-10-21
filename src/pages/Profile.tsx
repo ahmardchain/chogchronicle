@@ -5,6 +5,7 @@ import { useDemoEnergy, useProfile } from '../api';
 import { short, useMeta, useMyChogs } from '../hooks';
 import { CountUp, Energy, Img, Page, Skeleton, Tilt } from '../ui';
 import { Feed } from '../components';
+import { PactBadges } from '../pactbits';
 export default function Profile() {
   const id = Number(useParams().id); const { data: p, error } = useProfile(id); const { ids: mine, address } = useMyChogs(); const meta = useMeta(); const { data: de } = useDemoEnergy([id], !address);
   if (error) return <Page><div className="empty"><img src="/brand/chogwow.jpg" alt="" /><p className="banner">{(error as Error).message}</p></div></Page>;
@@ -26,6 +27,7 @@ export default function Profile() {
         : <div className="empty sm"><p className="mu">No relationships yet — go make a friend (or an enemy).</p></div>}</div>
       <div className="card"><h3>Achievements <span className="mono mu">{p.achievements.length}/{Object.keys(ACHIEVEMENTS).length}</span></h3><div className="achs">{Object.entries(ACHIEVEMENTS).map(([n, d], i) =>
         <motion.div key={n} className={'ach ' + (p.achievements.includes(n) ? 'got' : '')} title={d} initial={{ opacity: 0, y: 8 }} animate={{ opacity: p.achievements.includes(n) ? 1 : .35, y: 0 }} transition={{ delay: i * .04 }}>🏅 {n}<small>{d}</small></motion.div>)}</div></div>
+      <PactBadges id={id} achievements={p.achievements} />
       <div className="card"><h3>Chronicle</h3><Feed events={p.events} meta={meta} max={25} /></div>
     </section>
   </Page>;

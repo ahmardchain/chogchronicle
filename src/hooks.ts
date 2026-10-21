@@ -29,4 +29,4 @@ export function useChogBalance() {
 }
 export const short = (n?: string) => n?.replace('CHOG ', 'Chog ');
 export const ago = (t: number) => { const m = Math.round((Date.now() - t) / 6e4); return m < 1 ? 'just now' : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`; };
-export const ICON = { challenge: '⚔️', befriend: '🤝', prank: '😈', gift: '🎁' } as const;
+export const ICON = { challenge: '⚔️', befriend: '🤝', prank: '😈', gift: '🎁', pact: '🤞', sworn: '🛡️', betrayal: '💔' } as Record<string, string> & { challenge: string; befriend: string; prank: string; gift: string };

@@ -20,3 +20,11 @@ export const useInvalidate = () => { const qc = useQueryClient(); return () => q
 
 export const demoSession = (() => { let s = localStorage.getItem('cc.session'); if (!s) { s = crypto.randomUUID(); localStorage.setItem('cc.session', s); } return s; })();
 export const useDemoEnergy = (ids: number[], on: boolean) => q<Record<number, number>>(`/demo-energy?session=${demoSession}&ids=${ids.join(',')}`, { enabled: on && ids.length > 0 });
+// ---- Pacts + Witnesses (additive) ----
+import type { Pact, Tier } from '../shared/pacts';
+export type SquareEvent = Omit<Event, 'action'> & { action: string; witnesses: number[] };
+export type Square = { now: number; windowMs: number; online: Chog[]; activePacts: number; events: SquareEvent[] };
+export const useSquare = () => q<Square>('/square', { refetchInterval: 3000 });
+export const usePacts = (ids: number[]) => q<{ mine: Pact[]; open: Pact[]; recent: Pact[]; mode: string; now: number }>('/pacts?ids=' + ids.join(','), { refetchInterval: 4000 });
+export const usePactConfig = () => q<{ mode: 'escrow' | 'pledge'; escrow: string | null; tiers: Tier[]; stakes: number[]; demoMinutesPerDay: number }>('/pact-config', { refetchInterval: false });
+export const usePactPreview = (a: number, b: number) => q<{ events: number; witnessed: number; score: number; bond: number; label: { label: string; cls: string }; friends: boolean; tier: Tier; open: Pact | null }>(`/pact-preview/${a}/${b}`, { enabled: !!a && !!b && a !== b });
